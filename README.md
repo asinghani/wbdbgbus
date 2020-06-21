@@ -12,30 +12,34 @@ The module that must be integrated into a design to connect this debug bus inter
 parameter CLK_FREQ // Clock frequency, used for UART
 parameter UART_BAUD // UART baud rate
 parameter DROP_CLKS // Number of clocks before dropping an unfinished command
+```
+
+```verilog
+// Module Connections
 
 // UART
-output wire o_tx,
-input wire i_rx,
+output o_tx,
+input i_rx,
 
 // Wishbone
-output wire o_wb_cyc,
-output wire o_wb_stb,
-output wire o_wb_we,
-output wire [31:0] o_wb_addr,
-output wire [31:0] o_wb_data,
-input wire i_wb_ack,
-input wire i_wb_err,
-input wire i_wb_stall,
-input wire [31:0] i_wb_data,
+output o_wb_cyc
+output o_wb_stb
+output o_wb_we
+output [31:0] o_wb_addr
+output [31:0] o_wb_data
+input i_wb_ack
+input i_wb_err
+input i_wb_stall
+input [31:0] i_wb_data
 
 // Interrupts
-input wire i_interrupt_1,
-input wire i_interrupt_2,
-input wire i_interrupt_3,
-input wire i_interrupt_4,
+input i_interrupt_1
+input i_interrupt_2
+input i_interrupt_3
+input i_interrupt_4
 
 // Clock
-input wire i_clk
+input i_clk
 ```
 
 ## Interacting with the bus
