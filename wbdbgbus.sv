@@ -2,14 +2,14 @@
 
 `ifndef INTERNAL_TEST
 
-`include "wbdbgbus/uart_rx.sv"
-`include "wbdbgbus/uart_tx.sv"
+`include "wbdbgbus/wbdbgbus_uart_rx.sv"
+`include "wbdbgbus/wbdbgbus_uart_tx.sv"
 `include "wbdbgbus/wbdbgbusmaster.sv"
 
 `else
 
-`include "uart_rx.sv"
-`include "uart_tx.sv"
+`include "wbdbgbus_uart_rx.sv"
+`include "wbdbgbus_uart_tx.sv"
 `include "wbdbgbusmaster.sv"
 
 `endif

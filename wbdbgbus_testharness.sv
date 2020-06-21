@@ -7,7 +7,7 @@
 // verification of wbdbgbus functionality. Includes optional stall and
 // interrupt connections
 
-module testharness #(
+module wbdbgbus_testharness #(
     parameter CLK_FREQ = 25000000,
     parameter UART_BAUD = 115200,
     parameter DROP_CLKS = 2500000,
