@@ -1,8 +1,18 @@
 `default_nettype none
 
+`ifndef INTERNAL_TEST
+
 `include "wbdbgbus/uart_rx.sv"
 `include "wbdbgbus/uart_tx.sv"
 `include "wbdbgbus/wbdbgbusmaster.sv"
+
+`else
+
+`include "uart_rx.sv"
+`include "uart_tx.sv"
+`include "wbdbgbusmaster.sv"
+
+`endif
 
 module wbdbgbus #(
     parameter CLK_FREQ = 25000000,

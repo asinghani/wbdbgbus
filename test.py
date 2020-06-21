@@ -8,7 +8,7 @@ WIDTH = 80
 TEST_DIR = "sim_build"
 TEST_PACKAGE = "tests"
 
-TESTS = ["test_uart_rx", "test_uart_tx", "test_wbdbgbusmaster"]
+TESTS = ["test_uart_rx", "test_uart_tx", "test_wbdbgbusmaster", "test_wbdbgbus"]
 
 if len(sys.argv) > 1:
     targets = sys.argv[1:]
