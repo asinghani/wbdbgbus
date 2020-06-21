@@ -5,12 +5,14 @@
 `include "wbdbgbus/wbdbgbus_uart_rx.sv"
 `include "wbdbgbus/wbdbgbus_uart_tx.sv"
 `include "wbdbgbus/wbdbgbusmaster.sv"
+`include "wbdbgbus/wbdbgbus_fifo.sv"
 
 `else
 
 `include "wbdbgbus_uart_rx.sv"
 `include "wbdbgbus_uart_tx.sv"
 `include "wbdbgbusmaster.sv"
+`include "wbdbgbus_fifo.sv"
 
 `endif
 
@@ -19,7 +21,9 @@ module wbdbgbus #(
     parameter UART_BAUD = 9600,
 
     // Time before dropping an unfinished instruction
-    parameter DROP_CLKS = 2500000 // 0.1s at 25Mhz
+    parameter DROP_CLKS = 2500000, // 0.1s at 25Mhz
+
+    parameter FIFO_DEPTH = 128
 )
 (
     // UART
@@ -84,7 +88,6 @@ uart_tx #(
 );
 
 // Wishbone Master
-// TODO add FIFO on cmd and resp
 reg cmd_reset = 0;
 reg cmd_valid = 0;
 wire cmd_ready;
@@ -115,6 +118,31 @@ wbdbgbusmaster wbdbgbusmaster (
     .i_clk(i_clk)
 );
 
+// Response FIFO
+reg resp_fifo_rd_en = 0;
+wire [35:0] resp_fifo_rd_data;
+wire resp_fifo_rd_valid;
+reg resp_fifo_wr_en = 0;
+reg [35:0] resp_fifo_wr_data = 0;
+wire resp_fifo_empty;
+wire resp_fifo_full;
+
+wbdbgbus_fifo #(
+    .WIDTH(36),
+    .DEPTH(FIFO_DEPTH)
+) resp_fifo (
+    .i_rd_en(resp_fifo_rd_en),
+    .o_rd_data(resp_fifo_rd_data),
+    .o_rd_valid(resp_fifo_rd_valid),
+    .i_wr_en(resp_fifo_wr_en),
+    .i_wr_data(resp_fifo_wr_data),
+    .o_empty(resp_fifo_empty),
+    .o_full(resp_fifo_full),
+    .i_clk(i_clk),
+    .i_rst(cmd_reset)
+);
+
+
 reg [39:0] transmit_data = 0;
 reg [2:0] transmit_state = 0; // 0 = no tx, 1-5 = bytes
 
@@ -124,13 +152,10 @@ reg interrupt_2_last = 0;
 reg interrupt_3_last = 0;
 reg interrupt_4_last = 0;
 
-wire interrupt_1_rising = i_interrupt_1 && ~interrupt_1_last;
-wire interrupt_2_rising = i_interrupt_2 && ~interrupt_2_last;
-wire interrupt_3_rising = i_interrupt_3 && ~interrupt_3_last;
-wire interrupt_4_rising = i_interrupt_4 && ~interrupt_4_last;
-
-wire any_interrupt = (interrupt_1_rising || interrupt_2_rising ||
-                      interrupt_3_rising || interrupt_4_rising);
+reg interrupt_1_rising = 0;
+reg interrupt_2_rising = 0;
+reg interrupt_3_rising = 0;
+reg interrupt_4_rising = 0;
 
 always_ff @(posedge i_clk) begin
     interrupt_1_last <= i_interrupt_1;
@@ -139,32 +164,75 @@ always_ff @(posedge i_clk) begin
     interrupt_4_last <= i_interrupt_4;
 end
 
-// Transmit output from debug bus & handle interrupts
+// Buffer debug bus output into FIFO
+always_ff @(posedge i_clk) begin
+    resp_fifo_wr_en <= 0;
+
+    if (resp_valid && ~resp_fifo_full) begin
+        resp_fifo_wr_data <= resp_data;
+        resp_fifo_wr_en <= 1;
+    end
+end
+
+// Transmit responses from FIFO
+// Also handles interrupts in order to give them priority
 always_ff @(posedge i_clk) begin
     uart_tx_valid <= 0;
+    resp_fifo_rd_en <= 0;
+
+    // This allows interrupts to be detected even if a transmission
+    // is in progress. It is not designed, however, for interrupts
+    // which happen very close together (closer than 40 UART-bits together).
+    if (i_interrupt_1 && ~interrupt_1_last)
+        interrupt_1_rising <= 1;
+
+    if (i_interrupt_2 && ~interrupt_2_last)
+        interrupt_2_rising <= 1;
+
+    if (i_interrupt_3 && ~interrupt_3_last)
+        interrupt_3_rising <= 1;
+
+    if (i_interrupt_4 && ~interrupt_4_last)
+        interrupt_4_rising <= 1;
+
+    // Start FIFO read
+    if ((transmit_state == 0) &&
+        ~resp_fifo_empty &&
+        ~resp_fifo_rd_valid &&
+        ~resp_fifo_rd_en &&
+        ~interrupt_1_rising &&
+        ~interrupt_2_rising &&
+        ~interrupt_3_rising &&
+        ~interrupt_4_rising) begin
+
+        resp_fifo_rd_en <= 1;
+    end
 
     if (transmit_state == 0) begin
-        if (resp_valid) begin
-            transmit_data <= {4'b0000, resp_data};
+        // FIFO response, triggered by a FIFO read on previous cycle
+        if (resp_fifo_rd_valid) begin
+            transmit_data <= {4'b0000, resp_fifo_rd_data};
             transmit_state <= 1;
         end
-        else if (any_interrupt) begin
-            if (interrupt_1_rising) begin
-                transmit_data <= {4'b0000, RESP_INT_1, 32'b0};
-                transmit_state <= 1;
-            end
-            else if (interrupt_2_rising) begin
-                transmit_data <= {4'b0000, RESP_INT_2, 32'b0};
-                transmit_state <= 1;
-            end
-            else if (interrupt_3_rising) begin
-                transmit_data <= {4'b0000, RESP_INT_3, 32'b0};
-                transmit_state <= 1;
-            end
-            else if (interrupt_4_rising) begin
-                transmit_data <= {4'b0000, RESP_INT_4, 32'b0};
-                transmit_state <= 1;
-            end
+        else if (interrupt_1_rising) begin
+            transmit_data <= {4'b0000, RESP_INT_1, 32'b0};
+            transmit_state <= 1;
+            interrupt_1_rising <= 0;
+        end
+        else if (interrupt_2_rising) begin
+            transmit_data <= {4'b0000, RESP_INT_2, 32'b0};
+            transmit_state <= 1;
+            interrupt_2_rising <= 0;
+        end
+        else if (interrupt_3_rising) begin
+            transmit_data <= {4'b0000, RESP_INT_3, 32'b0};
+            transmit_state <= 1;
+            interrupt_3_rising <= 0;
+        end
+        else if (interrupt_4_rising) begin
+            transmit_data <= {4'b0000, RESP_INT_4, 32'b0};
+            transmit_state <= 1;
+            interrupt_4_rising <= 0;
         end
     end
     else begin
@@ -192,7 +260,7 @@ end
 reg [39:0] recieve_data = 0;
 reg [2:0] recieve_state = 0; // 0-4 = bytes, 5 = stalled
 
-// Countdown to dropping un-finished data
+// Countdown to dropping un-finished instruction
 /* verilator lint_off WIDTH */
 reg [$clog2(DROP_CLKS):0] drop_timer = DROP_CLKS;
 /* verilator lint_on WIDTH */

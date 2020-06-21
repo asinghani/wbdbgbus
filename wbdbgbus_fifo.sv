@@ -7,6 +7,7 @@ module wbdbgbus_fifo #(
     // Read port
     input wire i_rd_en,
     output reg [(WIDTH - 1):0] o_rd_data,
+    output reg o_rd_valid = 0,
 
     // Write port
     input wire i_wr_en,
@@ -50,12 +51,15 @@ end
 
 // Read
 always_ff @(posedge i_clk) begin
+    o_rd_valid <= 0;
+
     if (i_rst) begin
         rd_ptr <= 0;
     end
     else if (i_rd_en) begin
         rd_ptr <= rd_ptr + 1;
         o_rd_data <= ram[rd_ptr];
+        o_rd_valid <= ~o_empty;
 
         if (o_empty) begin
             $display("ERROR: READ FROM EMPTY FIFO");
