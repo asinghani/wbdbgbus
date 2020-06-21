@@ -18,8 +18,8 @@ parameter DROP_CLKS // Number of clocks before dropping an unfinished command
 // Module Connections
 
 // UART
-output o_tx,
-input i_rx,
+output o_tx
+input i_rx
 
 // Wishbone
 output o_wb_cyc
