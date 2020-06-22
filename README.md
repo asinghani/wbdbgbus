@@ -47,7 +47,7 @@ input i_clk
 
 A host machine interacts with the bus through a fairly simple protocol defined here.
 
-*Flow Control*: As this is a debugging bus, the host process is responsible for managing flow control. The host process may choose to send a burst of instructions without waiting for acknowledgements, however the size of this burst must be limited to less than the size of the internal FIFO and this must be regulated by the host. If the difference between the number of sent instructions and the number of recieved acknowledgements is greater than the FIFO depth, additional instructions may be discarded.
+**Flow Control**: As this is a debugging bus, the host process is responsible for managing flow control. The host process may choose to send a burst of instructions without waiting for acknowledgements, however the size of this burst must be limited to less than the size of the internal FIFO and this must be regulated by the host. If the difference between the number of sent instructions and the number of recieved acknowledgements is greater than the FIFO depth, additional instructions may be discarded.
 
 To read a single word from the bus:
 1. Send a "Set Address" instruction with the address to read
