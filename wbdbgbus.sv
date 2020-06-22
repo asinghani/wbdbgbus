@@ -318,8 +318,10 @@ always_ff @(posedge i_clk) begin
                 recieve_state <= 0;
             end
             else begin
-                cmd_fifo_wr_en <= 1;
-                cmd_fifo_wr_data <= {recieve_data[35:8], uart_rx_data};
+                if (~cmd_fifo_full) begin
+                    cmd_fifo_wr_en <= 1;
+                    cmd_fifo_wr_data <= {recieve_data[35:8], uart_rx_data};
+                end
                 recieve_state <= 0;
             end
         end
