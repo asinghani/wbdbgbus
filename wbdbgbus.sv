@@ -118,6 +118,30 @@ wbdbgbusmaster wbdbgbusmaster (
     .i_clk(i_clk)
 );
 
+// Command FIFO
+reg cmd_fifo_rd_en = 0;
+wire [35:0] cmd_fifo_rd_data;
+wire cmd_fifo_rd_valid;
+reg cmd_fifo_wr_en = 0;
+reg [35:0] cmd_fifo_wr_data = 0;
+wire cmd_fifo_empty;
+wire cmd_fifo_full;
+
+wbdbgbus_fifo #(
+    .WIDTH(36),
+    .DEPTH(FIFO_DEPTH)
+) cmd_fifo (
+    .i_rd_en(cmd_fifo_rd_en),
+    .o_rd_data(cmd_fifo_rd_data),
+    .o_rd_valid(cmd_fifo_rd_valid),
+    .i_wr_en(cmd_fifo_wr_en),
+    .i_wr_data(cmd_fifo_wr_data),
+    .o_empty(cmd_fifo_empty),
+    .o_full(cmd_fifo_full),
+    .i_clk(i_clk),
+    .i_rst(cmd_reset)
+);
+
 // Response FIFO
 reg resp_fifo_rd_en = 0;
 wire [35:0] resp_fifo_rd_data;
@@ -214,6 +238,9 @@ always_ff @(posedge i_clk) begin
             transmit_data <= {4'b0000, resp_fifo_rd_data};
             transmit_state <= 1;
         end
+        else if (resp_fifo_rd_en) begin
+            // If currently reading from FIFO, don't allow interrupts
+        end
         else if (interrupt_1_rising) begin
             transmit_data <= {4'b0000, RESP_INT_1, 32'b0};
             transmit_state <= 1;
@@ -265,53 +292,60 @@ reg [2:0] recieve_state = 0; // 0-4 = bytes, 5 = stalled
 reg [$clog2(DROP_CLKS):0] drop_timer = DROP_CLKS;
 /* verilator lint_on WIDTH */
 
-// Recieve commands and forward to debug bus
+// Recieve commands and add to command FIFO
 always_ff @(posedge i_clk) begin
-    cmd_valid <= 0;
     cmd_reset <= 0;
+    cmd_fifo_wr_en <= 0;
 
-    if (recieve_state < 5) begin
-        if (uart_rx_valid) begin
-            case (recieve_state)
-                0: recieve_data[39:32] <= uart_rx_data;
-                1: recieve_data[31:24] <= uart_rx_data;
-                2: recieve_data[23:16] <= uart_rx_data;
-                3: recieve_data[15:8] <= uart_rx_data;
-                4: recieve_data[7:0] <= uart_rx_data;
-            endcase
+    if (uart_rx_valid) begin
+        case (recieve_state)
+            0: recieve_data[39:32] <= uart_rx_data;
+            1: recieve_data[31:24] <= uart_rx_data;
+            2: recieve_data[23:16] <= uart_rx_data;
+            3: recieve_data[15:8] <= uart_rx_data;
+            4: recieve_data[7:0] <= uart_rx_data;
+        endcase
 
-            recieve_state <= recieve_state + 1;
-            /* verilator lint_off WIDTH */
-            drop_timer <= DROP_CLKS;
-            /* verilator lint_on WIDTH */
+        recieve_state <= recieve_state + 1;
+        /* verilator lint_off WIDTH */
+        drop_timer <= DROP_CLKS;
+        /* verilator lint_on WIDTH */
 
-            if (recieve_state == 4) begin
-                // Reset
-                if (recieve_data[35:32] == 4'b1111) begin
-                    cmd_reset <= 1;
-                    recieve_state <= 0;
-                end
-                else if (cmd_ready) begin
-                    cmd_valid <= 1;
-                    cmd_data <= {recieve_data[35:8], uart_rx_data};
-                    recieve_state <= 0;
-                end
+        if (recieve_state == 4) begin
+            // Reset
+            if (recieve_data[35:32] == 4'b1111) begin
+                cmd_reset <= 1;
+                recieve_state <= 0;
             end
-        end
-        else if (recieve_state > 0) begin
-            drop_timer <= drop_timer - 1;
-
-            if (drop_timer == 1) begin
+            else begin
+                cmd_fifo_wr_en <= 1;
+                cmd_fifo_wr_data <= {recieve_data[35:8], uart_rx_data};
                 recieve_state <= 0;
             end
         end
     end
-    else begin
-        if (cmd_ready) begin
-            cmd_valid <= 1;
-            cmd_data <= recieve_data[35:0];
+    else if (recieve_state > 0) begin
+        drop_timer <= drop_timer - 1;
+
+        if (drop_timer == 1) begin
             recieve_state <= 0;
         end
+    end
+end
+
+// Read from command FIFO and forward to bus
+always_ff @(posedge i_clk) begin
+    cmd_valid <= 0;
+    cmd_fifo_rd_en <= 0;
+
+    if (~cmd_reset && cmd_ready && ~cmd_fifo_empty &&
+        ~cmd_fifo_rd_en && ~cmd_fifo_rd_valid && ~cmd_valid) begin
+        cmd_fifo_rd_en <= 1;
+    end
+
+    if (cmd_ready && cmd_fifo_rd_valid && ~cmd_reset) begin
+        cmd_valid <= 1;
+        cmd_data <= cmd_fifo_rd_data;
     end
 end
 

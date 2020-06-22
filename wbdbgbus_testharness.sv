@@ -29,6 +29,7 @@ wire [31:0] wb_addr;
 wire [31:0] wb_wdata;
 reg [31:0] wb_rdata;
 
+/* verilator lint_off PINMISSING */
 wbdbgbus #(
     .CLK_FREQ(CLK_FREQ),
     .UART_BAUD(UART_BAUD),
@@ -51,6 +52,7 @@ wbdbgbus #(
 
     .i_clk(i_clk),
 );
+/* verilator lint_on PINMISSING */
 
 reg [31:0] ram[0:(MEMORY_DEPTH - 1)];
 

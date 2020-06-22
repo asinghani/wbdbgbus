@@ -168,4 +168,64 @@ def test_wbdbgbus():
     resp = parse_instruction(uart.get_recv_data(5))
     asserteq(resp[0], 0b0001)
 
+
+    print("Buffered instruction test")
+    dut.i_force_stall = 1
+
+    for i in range(8):
+        uart.send_all(create_instruction(0b0001 if i % 2 == 0 else 0b0011, 0))
+        tb.tick(12 * CLKS_PER_BYTE)
+        asserteq(uart.get_recv_len(), 0)
+
+    dut.i_force_stall = 0
+
+    # Ensure order remains consistent
+    for i in range(8):
+        tb.tick(6 * CLKS_PER_BYTE)
+        resp = parse_instruction(uart.get_recv_data(5))
+        asserteq(resp[0], 0b0001 if i % 2 == 0 else 0b0011)
+
+    print("Buffered write & readback test")
+    # Write then readback known data
+    dut.i_force_stall = 1
+
+    uart.send_all(create_instruction(0b0111, 0))
+    tb.tick(15 * CLKS_PER_BYTE)
+
+    for i in range(8):
+        data = values[i]
+
+        # Write data
+        uart.send_all(create_instruction(0b0010, data))
+        tb.tick(12 * CLKS_PER_BYTE)
+
+    uart.send_all(create_instruction(0b0111, 0))
+    tb.tick(15 * CLKS_PER_BYTE)
+
+    for i in range(8):
+        uart.send_all(create_instruction(0b0001, 0))
+        tb.tick(12 * CLKS_PER_BYTE)
+        asserteq(uart.get_recv_len(), 5)
+
+    dut.i_force_stall = 0
+
+    tb.tick(100 * CLKS_PER_BYTE)
+
+    # Ensure order remains same
+    resp = parse_instruction(uart.get_recv_data(5))
+    asserteq(resp[0], 0b0011)
+
+    for i in range(8):
+        resp = parse_instruction(uart.get_recv_data(5))
+        asserteq(resp[0], 0b0010)
+
+    resp = parse_instruction(uart.get_recv_data(5))
+    asserteq(resp[0], 0b0011)
+
+    for i in range(8):
+        resp = parse_instruction(uart.get_recv_data(5))
+        asserteq(resp[0], 0b0001)
+        asserteq(resp[1], values[i])
+
+
 test_wbdbgbus()
