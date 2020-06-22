@@ -12,6 +12,7 @@ The module that must be integrated into a design to connect this debug bus inter
 parameter CLK_FREQ // Clock frequency, used for UART
 parameter UART_BAUD // UART baud rate
 parameter DROP_CLKS // Number of clocks before dropping an unfinished command
+parameter FIFO_DEPTH // Depth of FIFO used for commands / responses
 ```
 
 ```verilog
@@ -44,7 +45,9 @@ input i_clk
 
 ## Interacting with the bus
 
-A host machine may interact with the bus through a fairly simple protocol. 
+A host machine interacts with the bus through a fairly simple protocol defined here.
+
+*Flow Control*: As this is a debugging bus, the host process is responsible for managing flow control. The host process may choose to send a burst of instructions without waiting for acknowledgements, however the size of this burst must be limited to less than the size of the internal FIFO and this must be regulated by the host. If the difference between the number of sent instructions and the number of recieved acknowledgements is greater than the FIFO depth, additional instructions may be discarded.
 
 To read a single word from the bus:
 1. Send a "Set Address" instruction with the address to read
@@ -102,8 +105,6 @@ The response opcodes (binary) are defined as follows:
 
 * [ ] Host-side interface library
 * [ ] Testbench interface wrappers
-* [ ] FIFO instruction buffering
-* [ ] UART flow control
 
 ## Contributing
 
