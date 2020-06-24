@@ -6,8 +6,8 @@ from .utils import *
     Wrapper for UART debug bus. Handles flow-control and buffering internally.
 """
 class DebugBus:
+
     def __init__(self, port, baud, fifo_size, timeout=0):
-        
         # Maximum number of ops that can be in-pipeline at once
         self.max_buf = (fifo_size - 2) if fifo_size > 2 else fifo_size
         assert self.max_buf > 0
@@ -80,6 +80,10 @@ class DebugBus:
     def read(self, address, n=1, _increment=True):
         """
             Read `n` contiguous 32-bit words starting at `address`. Blocks execution until finished or timed out. For reading multiple values from the same address (for peripherals which use a single register as a pipe), use read_peripheral().
+
+            Arguments:
+                address (int): The base address to read from. 
+                n (int): The number of values to read starting at the given address.
         """
         
         ret = []
@@ -124,13 +128,22 @@ class DebugBus:
     def read_peripheral(self, address, n=1):
         """
             Read `n` 32-bit words, all from `address`. Blocks execution until finished or timed out. This should be used for peripherals which use a single register as a pipe.
+
+            Arguments:
+                address (int): The singular address to read from.
+                n (int): The number of values to read from the given address.
         """
 
         return self.read(address, n=n, _increment=False)
 
     def write(self, address, data, verify=False, _increment=True):
         """
-            Write `n` contiguous 32-bit words starting at `address`. Blocks execution until finished or timed out. For writing multiple values to the same address (for peripherals which use a single register as a pipe), use write_peripheral().
+            Write `n` contiguous 32-bit words starting at `address`. Blocks execution until finished or timed out. `None` values in the data array will not be written. For writing multiple values to the same address (for peripherals which use a single register as a pipe), use write_peripheral().
+
+            Arguments:
+                address (int): The base address to write to.
+                data (list[int] OR int): The data to write.
+                verify (bool): Whether to read-back and verify the data after writing it.
         """
 
         ret = []
@@ -158,9 +171,16 @@ class DebugBus:
             num_words = min(self.max_buf, n)
 
             for i in range(num_words - first_round):
-                self.port.write(bytearray(create_instruction(
-                    CMD_WRITE_REQ, data_buf[0]
-                )))
+                if data_buf[0] is None:
+                    assert _increment
+                    # Use read req to increment address w/o writing
+                    self.port.write(bytearray(create_instruction(
+                        CMD_READ_REQ, 0
+                    )))
+                else:
+                    self.port.write(bytearray(create_instruction(
+                        CMD_WRITE_REQ, data_buf[0]
+                    )))
 
                 data_buf = data_buf[1:]
 
@@ -174,22 +194,29 @@ class DebugBus:
         # Remove address-acknowledge
         assert ret[0][0] == RESP_ADDR_ACK
         ret = ret[1:]
-        for inst, val in ret:
-            assert inst == RESP_WRITE_ACK
+        for i, resp in enumerate(ret):
+            if data[i] is None:
+                assert resp[0] == RESP_READ_RESP
+            else:
+                assert resp[0] == RESP_WRITE_ACK
 
         # Verify that correct data was written
         if verify and _increment:
             data_read = self.read(address, n=len(data), _increment=True)
 
             if len(data) == 1:
-                assert data_read == data[0]
+                assert (data_read == data[0]) or (data[0] is None)
             else:
                 for i in range(len(data)):
-                    assert data_read[i] == data[i]
+                    assert (data_read[i] == data[i]) or (data[i] is None)
 
     def write_peripheral(self, address, data):
         """
             Write `n` 32-bit words, all to `address`. Blocks execution until finished or timed out. This should be used for peripherals which use a single register as a pipe.
+
+            Arguments:
+                address (int): The singular address to write to.
+                data (list[int]): The data to write to the address.
         """
 
         self.write(address, data, verify=False, _increment=False)
@@ -251,7 +278,7 @@ class DebugBus:
 
     # Context manager compliance
     def __enter__(self):
-        pass
+        return self
 
     def __exit__(self, exception_type, exception_value, traceback):
         self.close()
