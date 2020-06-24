@@ -7,7 +7,7 @@ setup(
     description = "Host-side library for wishbone debug bus",
     url = "https://github.com/asinghani/wbdbgbus",
     packages = ["wbdbgbus"],
-    scripts = ["scripts/wb"],
+    #scripts = ["scripts/wb"],
     install_requires = [
         "pyserial==3.4",
         "click==7.1.2"

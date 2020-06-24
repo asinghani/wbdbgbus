@@ -103,7 +103,6 @@ The response opcodes (binary) are defined as follows:
 
 ## Planned Features
 
-* [ ] Host-side interface library
 * [ ] Testbench interface wrappers
 
 ## Contributing
