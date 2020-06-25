@@ -7,14 +7,14 @@ from .utils import *
 """
 class DebugBus:
 
-    def __init__(self, port, baud, fifo_size, timeout=0):
+    def __init__(self, serial_port, baud, fifo_size, timeout=0):
         # Maximum number of ops that can be in-pipeline at once
         self.max_buf = (fifo_size - 2) if fifo_size > 2 else fifo_size
         assert self.max_buf > 0
 
         # No timeout for serial port 
         # Instead, use unblocking serial port and block internally
-        self.port = Serial(port, baud, timeout=0)
+        self.port = Serial(serial_port, baud, timeout=0)
         self.timeout = timeout
 
         self.interrupts = [False, False, False, False]
@@ -79,7 +79,7 @@ class DebugBus:
 
     def read(self, address, n=1, _increment=True):
         """
-            Read `n` contiguous 32-bit words starting at `address`. Blocks execution until finished or timed out. For reading multiple values from the same address (for peripherals which use a single register as a pipe), use read_peripheral().
+            Read `n` contiguous 32-bit words starting at `address`. Blocks execution until finished or timed out. For reading multiple values from the same address (for peripherals which use a single register as a pipe), use read_peripheral(). If `n` = 1, returns a single integer value read from the bus, otherwise returns an array of integer values with length `n`.
 
             Arguments:
                 address (int): The base address to read from. 
@@ -127,7 +127,7 @@ class DebugBus:
 
     def read_peripheral(self, address, n=1):
         """
-            Read `n` 32-bit words, all from `address`. Blocks execution until finished or timed out. This should be used for peripherals which use a single register as a pipe.
+            Read `n` 32-bit words, all from `address`. Blocks execution until finished or timed out. This should be used for peripherals which use a single register as a pipe. If `n` = 1, returns a single integer value read from the bus, otherwise returns an array of integer values with length `n`.
 
             Arguments:
                 address (int): The singular address to read from.
@@ -138,7 +138,7 @@ class DebugBus:
 
     def write(self, address, data, verify=False, _increment=True):
         """
-            Write `n` contiguous 32-bit words starting at `address`. Blocks execution until finished or timed out. `None` values in the data array will not be written. For writing multiple values to the same address (for peripherals which use a single register as a pipe), use write_peripheral().
+            Write `data` into contiguous 32-bit words starting at `address`. Blocks execution until finished or timed out. `None` values in the data array will not be written. For writing multiple values to the same address (for peripherals which use a single register as a pipe), use write_peripheral().
 
             Arguments:
                 address (int): The base address to write to.
@@ -212,7 +212,7 @@ class DebugBus:
 
     def write_peripheral(self, address, data):
         """
-            Write `n` 32-bit words, all to `address`. Blocks execution until finished or timed out. This should be used for peripherals which use a single register as a pipe.
+            Write all values in `data` to `address`. Blocks execution until finished or timed out. This should be used for peripherals which use a single register as a pipe.
 
             Arguments:
                 address (int): The singular address to write to.
@@ -223,7 +223,7 @@ class DebugBus:
 
     def reset(self):
         """
-            Forcibly reset the bus and wait for the acknowledgement.
+            Forcibly reset the bus. Blocks until the bus-reset is acknowledged.
         """
         self.port.write(bytearray(create_instruction(
             CMD_BUS_RESET, 0

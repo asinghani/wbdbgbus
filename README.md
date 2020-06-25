@@ -45,6 +45,12 @@ input i_clk
 
 ## Interacting with the bus
 
+### Python Library
+
+The easiest way to interact with the debug bus is through the provided Python library. This library is located in the `host-library` subdirectory of this repo, and its documentation can be found in [host-library/README.md](host-library/README.md). If using the library, the remainder of this section may be disregarded.
+
+### Communication Protocol
+
 A host machine interacts with the bus through a fairly simple protocol defined here.
 
 **Flow Control**: As this is a debugging bus, the host process is responsible for managing flow control. The host process may choose to send a burst of instructions without waiting for acknowledgements, however the size of this burst must be limited to less than the size of the internal FIFO and this must be regulated by the host. If the difference between the number of sent instructions and the number of recieved acknowledgements is greater than the FIFO depth, additional instructions may be discarded.
