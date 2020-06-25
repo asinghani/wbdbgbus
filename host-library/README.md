@@ -19,12 +19,13 @@ FIFO_SIZE = 96
 led_state = 0
 
 with DebugBus(SERIAL_PORT, BAUD, fifo_size=FIFO_SIZE, timeout=0) as fpga:
-    fpga.write(0x00, led_state)
-    led_state = 1 - led_state
+    for i in range(60):
+        fpga.write(0x00, led_state)
+        led_state = 1 - led_state
 
-    # Read 4 contiguous words starting at 0x10
-    print(fpga.read(0x10, n=4))
-    time.sleep(1)
+        # Read 4 contiguous words starting at 0x10
+        print(fpga.read(0x10, n=4))
+        time.sleep(1)
 ```
 
 ## Context Manager
