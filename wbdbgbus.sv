@@ -1,13 +1,6 @@
 `default_nettype none
 
-`ifndef INTERNAL_TEST
-
-`include "wbdbgbus/wbdbgbus_uart_rx.sv"
-`include "wbdbgbus/wbdbgbus_uart_tx.sv"
-`include "wbdbgbus/wbdbgbusmaster.sv"
-`include "wbdbgbus/wbdbgbus_fifo.sv"
-
-`else
+`ifdef INTERNAL_TEST
 
 `include "wbdbgbus_uart_rx.sv"
 `include "wbdbgbus_uart_tx.sv"

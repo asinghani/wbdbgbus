@@ -1,7 +1,10 @@
 `default_nettype none
 
-`define INTERNAL_TEST
+`ifdef INTERNAL_TEST
+
 `include "wbdbgbus.sv"
+
+`endif
 
 // A simple test harness which connects the wbdbgbus to a memory bank for
 // verification of wbdbgbus functionality. Includes optional stall and

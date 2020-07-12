@@ -5,7 +5,8 @@ import random
 assert os.getcwd().replace("/", "").endswith("sim_build")
 
 def test_read():
-    tb = Testbench("wbdbgbusmaster.sv", "test_dbg_read", params={})
+    tb = Testbench("wbdbgbusmaster.sv", "test_dbg_read", params={},
+                   verilator_args=["-O3", "-DINTERNAL_TEST"])
     dut = tb.dut
 
     dut.i_wb_ack = 0

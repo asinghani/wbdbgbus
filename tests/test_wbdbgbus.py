@@ -34,6 +34,7 @@ def parse_instruction(byte_list):
 
 def test_wbdbgbus():
     tb = Testbench("wbdbgbus_testharness.sv", "test_wbdbgbus",
+                   verilator_args=["-O3", "-DINTERNAL_TEST"],
                    params={"MEMORY_DEPTH": MEMORY_DEPTH, "CLK_FREQ": CLK_FREQ,
                            "UART_BAUD": UART_BAUD, "DROP_CLKS": DROP_CLKS})
     dut = tb.dut
