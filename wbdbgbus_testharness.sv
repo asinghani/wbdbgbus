@@ -53,7 +53,7 @@ wbdbgbus #(
 
     .i_interrupt_1(i_interrupt),
 
-    .i_clk(i_clk),
+    .i_clk(i_clk)
 );
 /* verilator lint_on PINMISSING */
 
