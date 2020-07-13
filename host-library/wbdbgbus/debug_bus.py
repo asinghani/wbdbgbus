@@ -77,7 +77,7 @@ class DebugBus:
 
             time.sleep(0.01)
 
-    def read(self, address, n=1, _increment=True):
+    def read(self, address, n=1, _increment=True, verbose=False):
         """
             Read `n` contiguous 32-bit words starting at `address`. Blocks execution until finished or timed out. For reading multiple values from the same address (for peripherals which use a single register as a pipe), use read_peripheral(). If `n` = 1, returns a single integer value read from the bus, otherwise returns an array of integer values with length `n`.
 
@@ -96,12 +96,17 @@ class DebugBus:
         # Include address-set in first-round buffer-count 
         first_round = 1
 
+        num_total = n
+
         # One extra readback (for address)
         n = n + 1
 
         # Send only enough ops at once to avoid overflowing buffer
         while n > 0:
             num_words = min(self.max_buf, n)
+
+            if verbose:
+                print("{} / {}".format(num_total - n, num_total))
 
             for i in range(num_words - first_round):
                 self.port.write(bytearray(create_instruction(
