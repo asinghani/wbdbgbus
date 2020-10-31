@@ -8,7 +8,7 @@ WIDTH = 8
 DEPTH = 16
 
 def test_fifo():
-    tb = Testbench("wbdbgbus_fifo.sv", "test_fifo",
+    tb = Testbench("wbdbgbus.sv", "wbdbgbus_fifo", "test_fifo",
                    params={"WIDTH": WIDTH, "DEPTH": DEPTH})
     dut = tb.dut
 

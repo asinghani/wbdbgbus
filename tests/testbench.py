@@ -20,11 +20,12 @@ class Testbench:
     """
         Compile and set up the verilator testbench.
     """
-    def __init__(self, top_module_file, test_name, clk_port_name="i_clk", params={}, verilog_path=[], verilator_args=["-O3"], extra_cflags="-O3", tick_callbacks=[], quiet=True):
+    def __init__(self, top_module_file, top_module, test_name, clk_port_name="i_clk", params={}, verilog_path=[], verilator_args=["-O3"], extra_cflags="-O3", tick_callbacks=[], quiet=True):
         self.sim = pyverilator.PyVerilator.build(
             top_module_file,
+            verilog_module_name=top_module,
             verilog_path=[".."] + verilog_path,
-            verilator_args=verilator_args,
+            verilator_args=verilator_args + ["--top-module", top_module, "-Wno-MULTITOP"] if top_module is not None else [],
             extra_cflags=extra_cflags,
             params=params,
             quiet=quiet

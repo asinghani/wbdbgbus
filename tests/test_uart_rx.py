@@ -10,7 +10,7 @@ BAUD = 9600
 CLKS_PER_BAUD = int(CLK_FREQ / BAUD)
 
 def test_uart_rx():
-    tb = Testbench("wbdbgbus_uart_rx.sv", "test_uart_rx", params={"CLK_FREQ": CLK_FREQ, "BAUD": BAUD})
+    tb = Testbench("wbdbgbus.sv", "wbdbgbus_uart_rx", "test_uart_rx", params={"CLK_FREQ": CLK_FREQ, "BAUD": BAUD})
     dut = tb.dut
 
     uart = UARTSim(tb.write_port("i_in"), None, CLK_FREQ, BAUD)

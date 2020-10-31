@@ -5,7 +5,7 @@ import random
 assert os.getcwd().replace("/", "").endswith("sim_build")
 
 def test_read():
-    tb = Testbench("wbdbgbusmaster.sv", "test_dbg_read", params={})
+    tb = Testbench("wbdbgbus.sv", "wbdbgbusmaster", "test_dbg_read", params={})
     dut = tb.dut
 
     dut.i_wb_ack = 0
@@ -29,7 +29,7 @@ def test_read():
 
         dut.i_cmd_valid = 1
         tb.tick()
-        
+
         asserteq(dut.o_wb_cyc, 1)
         asserteq(dut.o_wb_stb, 1)
         asserteq(dut.o_wb_addr, 0)

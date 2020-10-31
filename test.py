@@ -1,6 +1,10 @@
 import os
 import sys
 
+print("Tests currently disabled in this branch. Please use main branch.")
+sys.exit(1)
+
+
 sys.path.append(".")
 
 WIDTH = 80
