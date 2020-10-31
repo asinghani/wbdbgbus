@@ -1,21 +1,5 @@
 `default_nettype none
 
-`ifndef INTERNAL_TEST
-
-`include "wbdbgbus/wbdbgbus_uart_rx.sv"
-`include "wbdbgbus/wbdbgbus_uart_tx.sv"
-`include "wbdbgbus/wbdbgbusmaster.sv"
-`include "wbdbgbus/wbdbgbus_fifo.sv"
-
-`else
-
-`include "wbdbgbus_uart_rx.sv"
-`include "wbdbgbus_uart_tx.sv"
-`include "wbdbgbusmaster.sv"
-`include "wbdbgbus_fifo.sv"
-
-`endif
-
 module wbdbgbus #(
     parameter CLK_FREQ = 25000000,
     parameter UART_BAUD = 9600,
@@ -64,7 +48,7 @@ reg [7:0] uart_tx_data;
 wire uart_tx_ready;
 reg uart_tx_valid = 0;
 
-uart_rx #(
+wbdbgbus_uart_rx #(
     .CLK_FREQ(CLK_FREQ),
     .BAUD(UART_BAUD)
 ) uart_rx (
@@ -75,7 +59,7 @@ uart_rx #(
     .i_clk(i_clk)
 );
 
-uart_tx #(
+wbdbgbus_uart_tx #(
     .CLK_FREQ(CLK_FREQ),
     .BAUD(UART_BAUD)
 ) uart_tx (
@@ -352,3 +336,395 @@ always_ff @(posedge i_clk) begin
 end
 
 endmodule
+
+module wbdbgbusmaster (
+    // Debug port connection
+    input wire i_cmd_reset,
+    input wire i_cmd_valid,
+    output wire o_cmd_ready,
+    input wire [35:0] i_cmd_data,
+    
+    output reg o_resp_valid = 0,
+    output reg [35:0] o_resp_data,
+
+    // Wishbone bus connection
+    output reg o_wb_cyc = 0,
+    output reg o_wb_stb = 0,
+    output reg o_wb_we = 0,
+    output reg [31:0] o_wb_addr = 0,
+    output reg [31:0] o_wb_data = 0,
+    input wire i_wb_ack,
+    input wire i_wb_err,
+    input wire i_wb_stall,
+    input wire [31:0] i_wb_data,
+
+    input wire i_clk
+);
+
+localparam CMD_READ_REQ     = 4'b0001;
+localparam CMD_WRITE_REQ    = 4'b0010;
+localparam CMD_SET_ADDR     = 4'b0011;
+localparam CMD_SET_ADDR_INC = 4'b0111;
+
+localparam RESP_READ_RESP   = 4'b0001;
+localparam RESP_WRITE_ACK   = 4'b0010;
+localparam RESP_ADDR_ACK    = 4'b0011;
+localparam RESP_BUS_ERROR   = 4'b0100;
+localparam RESP_BUS_RESET   = 4'b0101;
+
+reg addr_inc = 0;
+
+assign o_cmd_ready = (~o_wb_cyc);
+
+wire cmd_recv = i_cmd_valid && o_cmd_ready;
+wire [3:0] cmd_inst = i_cmd_data[35:32];
+wire [31:0] cmd_data = i_cmd_data[31:0];
+
+// Bus state
+always_ff @(posedge i_clk) begin
+    if (i_wb_err || i_cmd_reset) begin
+        // Reset on error or bus-reset
+        o_wb_cyc <= 0;
+        o_wb_stb <= 0;
+    end
+    else if (o_wb_stb) begin
+        // If not stalled, output is complete
+        if (!i_wb_stall) begin
+            o_wb_stb <= 0;
+        end
+    end
+    else if (o_wb_cyc) begin
+        // Once acknowledged, finish cycle
+        if (i_wb_ack) begin
+            o_wb_cyc <= 0;
+        end
+    end
+    else begin
+        if (cmd_recv && 
+            ((cmd_inst == CMD_READ_REQ) || (cmd_inst == CMD_WRITE_REQ))) begin
+
+            o_wb_cyc <= 1;
+            o_wb_stb <= 1;
+        end
+    end
+end
+
+// Addressing
+always_ff @(posedge i_clk) begin
+    if (cmd_recv) begin
+        if ((cmd_inst == CMD_SET_ADDR) || (cmd_inst == CMD_SET_ADDR_INC)) begin
+            o_wb_addr <= cmd_data;
+            addr_inc <= (cmd_inst == CMD_SET_ADDR_INC);
+        end
+    end
+    else if (o_wb_stb && ~i_wb_stall) begin
+        /* verilator lint_off WIDTH */
+        o_wb_addr <= o_wb_addr + addr_inc;
+        /* verilator lint_on WIDTH */
+    end
+end
+
+// Write-Enable
+always_ff @(posedge i_clk) begin
+    // Allow for stalling
+    if(~o_wb_cyc) begin
+        o_wb_we <= cmd_recv && (cmd_inst == CMD_WRITE_REQ);
+    end
+end
+
+// Write Data
+always_ff @(posedge i_clk) begin
+    // Update data when not stalled
+    if (~(o_wb_stb && i_wb_stall)) begin
+        o_wb_data <= cmd_data;
+    end
+end
+
+// Acknowledgement / response
+always_ff @(posedge i_clk) begin
+    o_resp_valid <= 0;
+
+    if (i_cmd_reset) begin
+        o_resp_valid <= 1;
+        o_resp_data <= {RESP_BUS_RESET, 32'b0};
+    end
+    else if (i_wb_err) begin
+        o_resp_valid <= 1;
+        o_resp_data <= {RESP_BUS_ERROR, 32'b0};
+    end
+    else if (o_wb_cyc && i_wb_ack) begin
+        o_resp_valid <= 1;
+        if (o_wb_we) begin
+            o_resp_data <= {RESP_WRITE_ACK, 32'b0};
+        end
+        else begin
+            o_resp_data <= {RESP_READ_RESP, i_wb_data};
+        end
+    end
+    else if (cmd_recv && 
+        ((cmd_inst == CMD_SET_ADDR) || (cmd_inst == CMD_SET_ADDR_INC))) begin
+        o_resp_valid <= 1;
+        o_resp_data <= {RESP_ADDR_ACK, 32'b0};
+    end
+end
+
+endmodule
+
+
+
+module wbdbgbus_fifo #(
+    parameter WIDTH = 36,
+    parameter DEPTH = 128
+) (
+    // Read port
+    input wire i_rd_en,
+    output reg [(WIDTH - 1):0] o_rd_data,
+    output reg o_rd_valid = 0,
+
+    // Write port
+    input wire i_wr_en,
+    input wire [(WIDTH - 1):0] i_wr_data,
+
+    // Status
+    output wire o_empty,
+    output wire o_full,
+
+    input wire i_clk,
+    input wire i_rst
+);
+
+localparam ADDR_WIDTH = $clog2(DEPTH);
+
+reg [(ADDR_WIDTH - 1):0] wr_ptr = 0;
+reg [(ADDR_WIDTH - 1):0] rd_ptr = 0;
+reg [ADDR_WIDTH:0] len = 0;
+
+reg [(WIDTH - 1):0] ram[0:(DEPTH - 1)];
+
+/* verilator lint_off WIDTH */
+assign o_empty = (len == 0);
+assign o_full = (len == DEPTH);
+/* verilator lint_on WIDTH */
+
+// Write
+always_ff @(posedge i_clk) begin
+    if (i_rst) begin
+        wr_ptr <= 0;
+    end
+    else if (i_wr_en) begin
+        wr_ptr <= wr_ptr + 1;
+        ram[wr_ptr] <= i_wr_data;
+
+        if (o_full) begin
+            $display("ERROR: WROTE TO FULL FIFO");
+        end
+    end
+end
+
+// Read
+always_ff @(posedge i_clk) begin
+    o_rd_valid <= 0;
+
+    if (i_rst) begin
+        rd_ptr <= 0;
+    end
+    else if (i_rd_en) begin
+        rd_ptr <= rd_ptr + 1;
+        o_rd_data <= ram[rd_ptr];
+        o_rd_valid <= ~o_empty;
+
+        if (o_empty) begin
+            $display("ERROR: READ FROM EMPTY FIFO");
+        end
+    end
+end
+
+// Track length
+always_ff @(posedge i_clk) begin
+    if (i_rst) begin
+        len <= 0;
+    end
+
+    // Read, no write
+    else if (i_rd_en && ~i_wr_en && ~o_empty) begin
+        len <= len - 1;
+    end
+
+    // Write, no read
+    else if (i_wr_en && ~i_rd_en && ~o_full) begin
+        len <= len + 1;
+    end
+
+    // Otherwise, if read and write on same cycle, len remains same
+end
+
+
+`ifdef VERILATOR
+    // Verify depth is power of 2 and greater than 1
+    always_comb begin
+        assert((DEPTH & (DEPTH - 1)) == 0);
+        assert((1 << ADDR_WIDTH) == DEPTH);
+        assert(DEPTH > 1);
+    end
+`endif
+
+endmodule
+
+// UART Reciever (8/N/1)
+module wbdbgbus_uart_rx
+#(
+    parameter CLK_FREQ = 250000,
+    parameter BAUD = 9600
+)
+(
+    output reg [7:0] o_data,
+    output reg o_valid,
+
+    input wire i_in,
+    input wire i_clk
+); 
+
+parameter CLKS_PER_BIT = CLK_FREQ / BAUD;
+parameter CLKS_PER_1_5_BIT = 3 * CLKS_PER_BIT / 2;
+
+reg[$clog2(CLKS_PER_BIT * 2):0] counter;
+reg [3:0] state = 0; // 0 = idle, 1 = start bit, 2-9 = data bits
+
+always_ff @(posedge i_clk) begin
+    o_valid <= 0;
+    counter <= 10; // Set counter to default value when idle
+
+    if(state == 0) begin
+        // Start bit
+        if(i_in == 0) begin
+            state <= 1;
+            /* verilator lint_off WIDTH */
+            counter <= CLKS_PER_1_5_BIT;
+            /* verilator lint_on WIDTH */
+        end
+
+        // Else stay in idle
+    end
+    else if (counter == 0) begin
+        // End bit
+        if(state == 9) begin
+            if (i_in == 1) begin
+                o_valid <= 1;
+                `ifdef DEBUG
+                    $display("RECEIVED 0x%H (%B)", o_data, o_data);
+                `endif
+            end
+            else begin
+                `ifdef DEBUG
+                    $display("INVALID END BIT");
+                `endif
+            end
+
+            state <= 0;
+        end
+
+        // Data bits
+        else begin
+            state <= state + 1;
+            o_data[state - 1] <= i_in;
+
+            /* verilator lint_off WIDTH */
+            counter <= CLKS_PER_BIT;
+            /* verilator lint_on WIDTH */
+        end
+    end
+    else begin
+        counter <= counter - 1;
+    end
+end
+
+endmodule
+
+// UART Transmitter (8/N/1)
+module wbdbgbus_uart_tx
+#(
+    parameter CLK_FREQ = 250000,
+    parameter BAUD = 9600
+)
+(
+    output wire o_ready,
+    output reg o_out,
+
+    input wire [7:0] i_data,
+    input wire i_valid,
+    input wire i_clk
+); 
+
+parameter CLKS_PER_BIT = CLK_FREQ / BAUD;
+
+reg[($clog2(CLKS_PER_BIT) + 1):0] counter;
+reg [3:0] state = 0; // 0 = idle, 1 = start bit, 2-9 = data bits, 10 = end bit
+
+reg [7:0] data_send; // Buffer the data in case it changes while sending
+
+assign o_ready = (state == 0);
+
+always_ff @(posedge i_clk) begin
+    counter <= 10; // Set counter to default value when idle
+
+    if(state == 0) begin
+        // Start transmission
+        if(i_valid) begin
+            state <= 1;
+            data_send <= i_data;
+
+            /* verilator lint_off WIDTH */
+            counter <= CLKS_PER_BIT;
+            /* verilator lint_on WIDTH */
+        end
+
+        // Else stay in idle
+    end
+    else if (counter == 0) begin
+        // End bit
+        if(state == 10) begin
+            state <= 0;
+            `ifdef DEBUG
+                $display("TRANSMIT FINISHED");
+            `endif
+        end
+
+        else begin
+            state <= state + 1;
+            /* verilator lint_off WIDTH */
+            if (state == 10) begin
+                counter <= CLKS_PER_BIT - 1;
+            end
+            else begin
+                counter <= CLKS_PER_BIT;
+            end
+            /* verilator lint_on WIDTH */
+        end
+    end
+    else begin
+        counter <= counter - 1;
+    end
+end
+
+always_comb begin
+    if(state == 0) begin
+        o_out = 1;
+    end
+    else if(state == 1) begin
+        o_out = 0;
+    end
+    else if(state == 10) begin
+        o_out = 1;
+    end
+    else begin
+        o_out = data_send[state - 2];
+    end
+end
+
+`ifdef VERILATOR
+always @(*)
+    assert(o_out || (state != 0));
+`endif
+
+endmodule
+
